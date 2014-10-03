@@ -1,0 +1,119 @@
+#!/usr/bin/env python
+
+import sqlite3
+import RPi.GPIO as GPIO ## Import GPIO library
+import os
+import time
+import glob
+#global z
+threshold= 40
+true= 1
+false= 0
+z= 1
+# global variables
+speriod=(1*60)-1
+dbname='/var/www/mydb.db'
+
+
+
+# store the temperature in the database
+def log_temperature(temp):
+
+    conn=sqlite3.connect(dbname)
+    curs=conn.cursor()
+
+    curs.execute("INSERT INTO temps values(datetime('now', '+5 Hour','+30 Minute'), (?))", (temp,))
+    print "Bhautik"
+    # commit the changes
+    conn.commit()
+    print "Yes"
+    conn.close()
+
+
+# display the contents of the database
+def display_data():
+
+    conn=sqlite3.connect(dbname)
+    curs=conn.cursor()
+
+    for row in curs.execute("SELECT * FROM temps"):
+        print str(row[0])+"	"+str(row[1])
+
+    conn.close()
+
+
+
+# get temerature
+# returns None on error, or the temperature as a float
+def get_temp(devicefile):
+
+    try:
+        fileobj = open(devicefile,'r')
+        lines = fileobj.readlines()
+        fileobj.close()
+    except:
+        return None
+
+    # get the status from the end of line 1 
+    status = lines[0][-4:-1]
+
+    # is the status is ok, get the temperature from line 2
+    if status=="YES":
+        print status
+        tempstr= lines[1][-6:-1]
+        tempvalue=float(tempstr)/1000
+        print tempvalue
+        return tempvalue
+    else:
+        print "There was an error."
+        return None
+
+
+
+# main function
+# This is where the program starts 
+def main():
+#    GPIO.setmode(GPIO.BOARD) ## Use board pin numbering
+    GPIO.setup(11, GPIO.OUT) ## Setup GPIO Pin 7 to OUT
+    GPIO.setup(18, GPIO.OUT) ## Setup GPIO Pin 24 to OUT
+    # enable kernel modules
+    os.system('sudo modprobe w1-gpio')
+    os.system('sudo modprobe w1-therm')
+    # search for a device file that starts with 28
+    devicelist = glob.glob('/sys/bus/w1/devices/10*')
+    if devicelist=='':
+        return None
+    else:
+        # append /w1slave to the device file
+        w1devicefile = devicelist[0] + '/w1_slave'
+        GPIO.output(11,true)
+
+  #  while True:
+    # get the temperature from the device file
+    temperature = get_temp(w1devicefile)
+    if temperature != None:
+             print "temperature="+str(temperature)
+    else:
+        # Sometimes reads fail on the first attempt
+        # so we need to retry
+             temperature = get_temp(w1devicefile)
+             print "temperature="+str(temperature)
+
+        # Store the temperature in the database
+    log_temperature(temperature)
+
+        # display the contents of the database
+#        display_data()
+    if temperature >= threshold:
+             GPIO.output(11,false)
+    else:
+             GPIO.output(11,true)
+#         time.sleep(speriod)
+    if z == true:
+             GPIO.output(18,true)
+    else:
+             GPIO.output(18,false)
+     #    time.sleep(speriod)
+            
+if __name__=="__main__":
+    main()
